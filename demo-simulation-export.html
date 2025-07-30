@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CircuitJS1 Simulation Data Export Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .demo-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .button.danger:hover {
+            background: #c82333;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.success:hover {
+            background: #218838;
+        }
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .info {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        .status.warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+        }
+        .status.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CircuitJS1 Simulation Data Export Demo</h1>
+        
+        <div class="demo-section">
+            <h2>Circuit Simulator</h2>
+            <iframe id="circuitFrame" src="https://www.falstad.com/circuit/circuitjs.html" width="100%" height="400"></iframe>
+        </div>
+        
+        <div class="demo-section">
+            <h2>Simulation Data Export</h2>
+            <button class="button" onclick="exportSimulationData()">Export Complete Data</button>
+            <button class="button" onclick="analyzeIssues()">Analyze Issues</button>
+            <button class="button" onclick="getCorrections()">Get Corrections</button>
+            <button class="button success" onclick="startMonitoring()">Start Monitoring</button>
+            <button class="button danger" onclick="stopMonitoring()">Stop Monitoring</button>
+            <div id="status"></div>
+            <div id="output" class="output"></div>
+        </div>
+        
+        <div class="demo-section">
+            <h2>Test Circuits</h2>
+            <button class="button" onclick="loadTestCircuit('good')">Load Good Circuit</button>
+            <button class="button" onclick="loadTestCircuit('bad')">Load Bad Circuit</button>
+            <button class="button" onclick="loadTestCircuit('complex')">Load Complex Circuit</button>
+        </div>
+        
+        <div class="demo-section">
+            <h2>Real-time Monitoring</h2>
+            <div id="monitoring-output" class="output"></div>
+        </div>
+    </div>
+
+    <script src="circuitjs1/war/simulation-export.js"></script>
+    <script>
+        let monitoringId = null;
+        
+        // Test circuits
+        const testCircuits = {
+            good: `$ 1 5.0E-6 20.0 50 5 43 5e-11
+v 100 100 100 200 0 0 40 9 0 0 0.5
+r 100 100 200 100 0 220
+162 200 100 200 200 1 default-led 1 0 0 0.01
+g 100 200 0 0 0`,
+            
+            bad: `$ 1 5.0E-6 20.0 50 5 43 5e-11
+v 100 100 100 200 0 0 40 9 0 0 0.5
+r 100 100 200 100 0 0
+162 200 100 200 200 1 default-led 1 0 0 0.01`,
+            
+            complex: `$ 1 5.0E-6 20.0 50 5 43 5e-11
+v 100 100 100 200 0 0 40 9 0 0 0.5
+r 100 100 200 100 0 220
+c 200 100 300 100 0 1e-6
+l 300 100 400 100 0 1e-3
+162 400 100 400 200 1 default-led 1 0 0 0.01
+g 100 200 0 0 0`
+        };
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+        
+        function updateOutput(data) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.textContent = JSON.stringify(data, null, 2);
+        }
+        
+        function updateMonitoringOutput(message) {
+            const monitoringDiv = document.getElementById('monitoring-output');
+            const timestamp = new Date().toLocaleTimeString();
+            monitoringDiv.textContent += `[${timestamp}] ${message}\n`;
+            monitoringDiv.scrollTop = monitoringDiv.scrollHeight;
+        }
+        
+        async function exportSimulationData() {
+            updateStatus('Exporting simulation data...', 'info');
+            
+            try {
+                const data = await new Promise((resolve) => {
+                    const checkCircuitJS = setInterval(() => {
+                        if (window.CircuitJS1SimulationExport) {
+                            clearInterval(checkCircuitJS);
+                            const result = window.CircuitJS1SimulationExport.exportCompleteSimulationData();
+                            resolve(result);
+                        }
+                    }, 100);
+                    
+                    setTimeout(() => {
+                        clearInterval(checkCircuitJS);
+                        resolve({ error: 'CircuitJS1 not available' });
+                    }, 5000);
+                });
+                
+                if (data.error) {
+                    updateStatus(`Error: ${data.error}`, 'error');
+                } else {
+                    updateStatus('Simulation data exported successfully!', 'success');
+                    updateOutput(data);
+                }
+            } catch (error) {
+                updateStatus(`Export failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function analyzeIssues() {
+            updateStatus('Analyzing simulation issues...', 'info');
+            
+            try {
+                const issues = await new Promise((resolve) => {
+                    const checkCircuitJS = setInterval(() => {
+                        if (window.CircuitJS1SimulationExport) {
+                            clearInterval(checkCircuitJS);
+                            const result = window.CircuitJS1SimulationExport.analyzeSimulationIssues();
+                            resolve(result);
+                        }
+                    }, 100);
+                    
+                    setTimeout(() => {
+                        clearInterval(checkCircuitJS);
+                        resolve({ error: 'CircuitJS1 not available' });
+                    }, 5000);
+                });
+                
+                if (issues.error) {
+                    updateStatus(`Error: ${issues.error}`, 'error');
+                } else {
+                    const errorCount = issues.errors ? issues.errors.length : 0;
+                    const warningCount = issues.warnings ? issues.warnings.length : 0;
+                    
+                    if (errorCount > 0 || warningCount > 0) {
+                        updateStatus(`Found ${errorCount} errors and ${warningCount} warnings`, 'warning');
+                    } else {
+                        updateStatus('No issues detected', 'success');
+                    }
+                    
+                    updateOutput(issues);
+                }
+            } catch (error) {
+                updateStatus(`Analysis failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function getCorrections() {
+            updateStatus('Generating correction suggestions...', 'info');
+            
+            try {
+                const suggestions = await new Promise((resolve) => {
+                    const checkCircuitJS = setInterval(() => {
+                        if (window.CircuitJS1SimulationExport) {
+                            clearInterval(checkCircuitJS);
+                            const result = window.CircuitJS1SimulationExport.generateCorrectionSuggestions();
+                            resolve(result);
+                        }
+                    }, 100);
+                    
+                    setTimeout(() => {
+                        clearInterval(checkCircuitJS);
+                        resolve({ error: 'CircuitJS1 not available' });
+                    }, 5000);
+                });
+                
+                if (suggestions.error) {
+                    updateStatus(`Error: ${suggestions.error}`, 'error');
+                } else {
+                    const suggestionCount = suggestions ? suggestions.length : 0;
+                    updateStatus(`Generated ${suggestionCount} correction suggestions`, 'success');
+                    updateOutput(suggestions);
+                }
+            } catch (error) {
+                updateStatus(`Correction generation failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function startMonitoring() {
+            if (monitoringId) {
+                updateStatus('Monitoring already active', 'warning');
+                return;
+            }
+            
+            try {
+                monitoringId = window.CircuitJS1SimulationExport.startSimulationMonitoring((data) => {
+                    const issues = window.CircuitJS1SimulationExport.analyzeSimulationIssues();
+                    if (issues && (issues.errors.length > 0 || issues.warnings.length > 0)) {
+                        updateMonitoringOutput(`Issues detected: ${issues.errors.length} errors, ${issues.warnings.length} warnings`);
+                    } else {
+                        updateMonitoringOutput('Simulation running normally');
+                    }
+                }, 2000);
+                
+                updateStatus('Monitoring started - checking every 2 seconds', 'success');
+            } catch (error) {
+                updateStatus(`Failed to start monitoring: ${error.message}`, 'error');
+            }
+        }
+        
+        function stopMonitoring() {
+            if (monitoringId) {
+                window.CircuitJS1SimulationExport.stopSimulationMonitoring(monitoringId);
+                monitoringId = null;
+                updateStatus('Monitoring stopped', 'info');
+            } else {
+                updateStatus('No monitoring active', 'warning');
+            }
+        }
+        
+        function loadTestCircuit(type) {
+            const circuit = testCircuits[type];
+            if (!circuit) {
+                updateStatus('Unknown circuit type', 'error');
+                return;
+            }
+            
+            const iframe = document.getElementById('circuitFrame');
+            const encodedCircuit = encodeURIComponent(circuit);
+            const newURL = `https://www.falstad.com/circuit/circuitjs.html?cct=${encodedCircuit}`;
+            iframe.src = newURL;
+            
+            updateStatus(`Loaded ${type} test circuit`, 'success');
+        }
+        
+        // Listen for simulation issues
+        window.addEventListener('circuitjs-simulation-issues', (event) => {
+            const issues = event.detail;
+            updateMonitoringOutput(`Event: ${issues.errors.length} errors, ${issues.warnings.length} warnings detected`);
+        });
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            updateStatus('Demo loaded - CircuitJS1 Simulation Export interface ready', 'info');
+        });
+    </script>
+</body>
+</html> 
